@@ -1,6 +1,7 @@
 import Map "mo:core/Map";
 import Array "mo:core/Array";
 import Order "mo:core/Order";
+import Nat "mo:core/Nat";
 import Text "mo:core/Text";
 import Principal "mo:core/Principal";
 import AccessControl "authorization/access-control";
@@ -24,13 +25,6 @@ actor {
   // User Profile
   public type UserProfile = {
     name : Text;
-    // add more fields if needed
-  };
-
-  module WorkerId {
-    public func compare(id1 : WorkerId, id2 : WorkerId) : Order.Order {
-      Nat.compare(id1, id2);
-    };
   };
 
   type AttendanceRecord = {
@@ -213,7 +207,6 @@ actor {
   // Attributes
 
   func canEditWorker({ caller } : { caller : Principal }, id : WorkerId) : Bool {
-    // if caller == Principal.fromText(adminId) { return true };
     switch (userProfiles.get(caller)) {
       case (?profile) { true };
       case (null) { false };

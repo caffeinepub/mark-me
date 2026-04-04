@@ -18,6 +18,7 @@ import {
   useDeleteWorker,
   useWorkers,
 } from "../hooks/useQueries";
+import { WorkerAvatar } from "./DashboardPage";
 
 function getWeekDates(referenceDate: Date): Date[] {
   const d = new Date(referenceDate);
@@ -168,20 +169,24 @@ export default function AttendancePage() {
 
     const totalSlots = workers.length * dates.length;
     const marked = present + absent + onLeave + halfDay;
-    const unmarked = totalSlots - marked;
     const totalWorkers = workers.length;
+
+    // Unmarked = workers with no attendance record for TODAY specifically
+    const todayStr = new Date().toISOString().split("T")[0];
+    const todayUnmarked =
+      workers.length - records.filter((r) => r.date === todayStr).length;
 
     return {
       present,
       absent,
       onLeave,
       halfDay,
-      unmarked,
+      unmarked: todayUnmarked,
       totalSlots,
       marked,
       totalWorkers,
     };
-  }, [dates, workers, attendanceMap]);
+  }, [dates, workers, attendanceMap, records]);
 
   const handlePrev = () => {
     const d = new Date(referenceDate);
@@ -228,24 +233,23 @@ export default function AttendancePage() {
             Attendance Register
           </h1>
           <p className="text-sm text-muted-foreground">
-            {viewMode === "week" ? "Weekly" : "Monthly"} view
+            {viewMode === "week"
+              ? "Weekly view — navigate with the arrows"
+              : "Monthly view — full month at a glance"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input
-              type="date"
-              value={searchDate}
-              onChange={(e) => handleSearchDate(e.target.value)}
-              className="pl-8 h-9 text-sm w-44"
-              data-ocid="attendance.search_input"
-            />
-          </div>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input
+            type="date"
+            value={searchDate}
+            onChange={(e) => handleSearchDate(e.target.value)}
+            className="pl-8 h-9 w-full sm:w-44"
+            data-ocid="attendance.search_input"
+          />
         </div>
       </div>
 
-      {/* Attendance Grid card */}
       <Card className="shadow-card border-border overflow-hidden">
         <CardHeader className="pb-3 flex flex-row items-center justify-between gap-4 flex-wrap">
           {/* Navigation + Week/Month toggle */}
@@ -338,7 +342,7 @@ export default function AttendancePage() {
               <table className="w-full border-collapse min-w-[400px]">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="sticky left-0 z-10 bg-card text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground min-w-[140px] border-r border-border">
+                    <th className="sticky left-0 z-10 bg-card text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground min-w-[160px] border-r border-border">
                       Worker
                     </th>
                     {dates.map((d) => (
@@ -346,7 +350,7 @@ export default function AttendancePage() {
                         key={toISO(d)}
                         className="px-1 py-2 text-center min-w-[42px]"
                       >
-                        <div className="text-[10px] font-medium text-muted-foreground">
+                        <div className="text-[9px] font-medium text-muted-foreground">
                           {DAY_ABBR[d.getDay()]}
                         </div>
                         <div className="text-xs font-bold text-foreground">
@@ -363,18 +367,27 @@ export default function AttendancePage() {
                       className="border-b border-border/50 hover:bg-accent/30 transition-colors"
                       data-ocid={`attendance.item.${idx + 1}`}
                     >
-                      <td className="sticky left-0 z-10 bg-card hover:bg-accent/30 px-4 py-2 border-r border-border">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedWorker(worker)}
-                          data-ocid="attendance.worker.button"
-                          className="text-sm font-medium text-primary hover:underline text-left"
-                        >
-                          {worker.name}
-                        </button>
-                        <p className="text-[11px] text-muted-foreground truncate max-w-[110px]">
-                          {worker.role}
-                        </p>
+                      <td className="sticky left-0 z-10 bg-card hover:bg-accent/30 px-3 py-2 border-r border-border">
+                        <div className="flex items-center gap-1.5">
+                          <WorkerAvatar
+                            name={worker.name}
+                            photo={worker.photo}
+                            size="sm"
+                          />
+                          <div className="min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedWorker(worker)}
+                              data-ocid="attendance.worker.button"
+                              className="text-sm font-medium text-primary hover:underline text-left block truncate max-w-[90px]"
+                            >
+                              {worker.name}
+                            </button>
+                            <p className="text-[11px] text-muted-foreground truncate max-w-[90px]">
+                              {worker.role}
+                            </p>
+                          </div>
+                        </div>
                       </td>
                       {dates.map((d) => {
                         const dateStr = toISO(d);
@@ -490,7 +503,7 @@ export default function AttendancePage() {
                   {periodReport.unmarked > 0 && (
                     <div
                       className="bg-status-unmarked h-full transition-all flex-1"
-                      title={`Unmarked: ${periodReport.unmarked}`}
+                      title={`Unmarked today: ${periodReport.unmarked}`}
                     />
                   )}
                 </div>
@@ -535,7 +548,7 @@ export default function AttendancePage() {
                     {periodReport.unmarked}
                   </span>
                   <span className="text-[11px] text-muted-foreground mt-0.5 font-medium">
-                    Unmarked
+                    Unmarked Today
                   </span>
                 </div>
               </div>

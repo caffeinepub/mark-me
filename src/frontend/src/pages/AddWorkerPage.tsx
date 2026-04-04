@@ -2,7 +2,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle, Loader2, Upload, UserPlus, X } from "lucide-react";
+import {
+  Camera,
+  CheckCircle,
+  Loader2,
+  Upload,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -17,6 +24,7 @@ export default function AddWorkerPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const createWorker = useCreateWorker();
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,16 +109,8 @@ export default function AddWorkerPage() {
             <form onSubmit={handleSubmit} className="space-y-5">
               {/* Photo upload */}
               <div className="flex flex-col items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ")
-                      fileInputRef.current?.click();
-                  }}
-                  data-ocid="add_worker.upload_button"
-                  className="w-24 h-24 rounded-full border-2 border-dashed border-border bg-muted/50 flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-all overflow-hidden"
-                >
+                {/* Avatar preview */}
+                <div className="w-24 h-24 rounded-full border-2 border-dashed border-border bg-muted/50 flex flex-col items-center justify-center overflow-hidden">
                   {photoPreview ? (
                     <img
                       src={photoPreview}
@@ -121,11 +121,36 @@ export default function AddWorkerPage() {
                     <>
                       <Upload className="w-5 h-5 text-muted-foreground mb-1" />
                       <span className="text-[10px] text-muted-foreground text-center px-2">
-                        Upload Photo
+                        No photo
                       </span>
                     </>
                   )}
-                </button>
+                </div>
+
+                {/* Two photo action buttons */}
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    data-ocid="add_worker.upload_button"
+                  >
+                    <Upload className="w-3.5 h-3.5 mr-1.5" />
+                    Upload Photo
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cameraInputRef.current?.click()}
+                    data-ocid="add_worker.camera.button"
+                  >
+                    <Camera className="w-3.5 h-3.5 mr-1.5" />
+                    Take Photo
+                  </Button>
+                </div>
+
                 {photoPreview && (
                   <button
                     type="button"
@@ -138,6 +163,8 @@ export default function AddWorkerPage() {
                     <X className="w-3 h-3" /> Remove photo
                   </button>
                 )}
+
+                {/* Hidden file input for gallery upload */}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -146,6 +173,16 @@ export default function AddWorkerPage() {
                   className="hidden"
                   data-ocid="add_worker.dropzone"
                 />
+                {/* Hidden file input for camera capture */}
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+
                 <p className="text-[11px] text-muted-foreground">
                   PNG, JPG up to 2MB
                 </p>
@@ -226,18 +263,16 @@ export default function AddWorkerPage() {
                 )}
               </div>
 
-              {/* Success state */}
+              {/* Success message */}
               {success && (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="flex items-center gap-2 p-3 rounded-lg bg-status-present/10 border border-status-present/20"
+                  className="flex items-center gap-2 p-3 rounded-lg bg-status-present/10 border border-status-present/30 text-status-present text-sm"
                   data-ocid="add_worker.success_state"
                 >
-                  <CheckCircle className="w-4 h-4 text-status-present" />
-                  <p className="text-sm text-status-present font-medium">
-                    Worker added successfully!
-                  </p>
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  Worker added successfully!
                 </motion.div>
               )}
 
