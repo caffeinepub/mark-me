@@ -1,13 +1,30 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ClipboardCheck, Search } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  ClipboardCheck,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AttendanceStatus, type Worker } from "../backend";
 import {
   useAllAttendanceRecords,
+  useDeleteWorker,
   useMarkAttendance,
   useWorkers,
 } from "../hooks/useQueries";
@@ -21,6 +38,8 @@ const STATUS_OPTIONS: {
   activeBg: string;
   activeText: string;
   activeBorder: string;
+  badgeBg: string;
+  badgeText: string;
 }[] = [
   {
     status: AttendanceStatus.present,
@@ -29,6 +48,8 @@ const STATUS_OPTIONS: {
     activeBg: "bg-status-present",
     activeText: "text-status-present-fg",
     activeBorder: "border-status-present",
+    badgeBg: "bg-status-present",
+    badgeText: "text-status-present-fg",
   },
   {
     status: AttendanceStatus.absent,
@@ -37,6 +58,8 @@ const STATUS_OPTIONS: {
     activeBg: "bg-status-absent",
     activeText: "text-status-absent-fg",
     activeBorder: "border-status-absent",
+    badgeBg: "bg-status-absent",
+    badgeText: "text-status-absent-fg",
   },
   {
     status: AttendanceStatus.onLeave,
@@ -45,6 +68,8 @@ const STATUS_OPTIONS: {
     activeBg: "bg-status-leave",
     activeText: "text-status-leave-fg",
     activeBorder: "border-status-leave",
+    badgeBg: "bg-status-leave",
+    badgeText: "text-status-leave-fg",
   },
   {
     status: AttendanceStatus.halfDay,
@@ -53,110 +78,224 @@ const STATUS_OPTIONS: {
     activeBg: "bg-status-halfday",
     activeText: "text-status-halfday-fg",
     activeBorder: "border-status-halfday",
+    badgeBg: "bg-status-halfday",
+    badgeText: "text-status-halfday-fg",
   },
 ];
+
+const NOT_MARKED_BADGE = {
+  label: "Not Marked",
+  icon: "—",
+  badgeBg: "bg-status-unmarked",
+  badgeText: "text-status-unmarked-fg",
+};
 
 function WorkerCard({
   worker,
   todayStatus,
   onMark,
   isMutating,
+  onDelete,
 }: {
   worker: Worker;
   todayStatus: AttendanceStatus | null;
   onMark: (status: AttendanceStatus) => void;
   isMutating: boolean;
+  onDelete: () => void;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
   const groupName = `attendance-${worker.id.toString()}`;
 
+  const currentStatusOption = todayStatus
+    ? (STATUS_OPTIONS.find((opt) => opt.status === todayStatus) ?? null)
+    : null;
+
+  const badgeLabel = currentStatusOption?.label ?? NOT_MARKED_BADGE.label;
+  const badgeIcon = currentStatusOption?.icon ?? NOT_MARKED_BADGE.icon;
+  const badgeBg = currentStatusOption?.badgeBg ?? NOT_MARKED_BADGE.badgeBg;
+  const badgeText =
+    currentStatusOption?.badgeText ?? NOT_MARKED_BADGE.badgeText;
+
   return (
-    <Card className="shadow-card border-border">
-      <CardContent className="p-4">
-        {/* Worker info row */}
-        <div className="flex items-center gap-3 mb-3">
-          <WorkerAvatar name={worker.name} photo={worker.photo} size="sm" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground truncate">
-              {worker.name}
-            </p>
-            <p className="text-xs text-muted-foreground truncate">
-              {worker.role}
-            </p>
+    <>
+      <Card className="shadow-card border-border">
+        <CardContent className="p-4">
+          {/* Worker info row */}
+          <div className="flex items-center gap-3 mb-3">
+            <WorkerAvatar name={worker.name} photo={worker.photo} size="sm" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground truncate">
+                {worker.name}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {worker.role}
+              </p>
+            </div>
+            {/* Delete button */}
+            <button
+              type="button"
+              onClick={() => setShowDeleteDialog(true)}
+              data-ocid="marking.delete_button"
+              className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-150"
+              aria-label={`Delete ${worker.name}`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
-        </div>
 
-        {/* Divider */}
-        <div className="h-px bg-border mb-2.5" />
+          {/* Divider */}
+          <div className="h-px bg-border mb-2.5" />
 
-        {/* Radio-style single-select status list */}
-        <fieldset
-          disabled={isMutating}
-          className="border-0 p-0 m-0 flex flex-col gap-1.5"
-        >
-          <legend className="sr-only">
-            Attendance status for {worker.name}
-          </legend>
-          {STATUS_OPTIONS.map((opt) => {
-            const isActive = todayStatus === opt.status;
-            const inputId = `${groupName}-${opt.status}`;
-            return (
-              <label
-                key={opt.status}
-                htmlFor={inputId}
-                data-ocid={`marking.${opt.status}.button`}
-                className={cn(
-                  "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer select-none",
-                  isActive
-                    ? cn(
-                        opt.activeBg,
-                        opt.activeText,
-                        opt.activeBorder,
-                        "shadow-sm",
-                      )
-                    : "bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-                  isMutating && "opacity-60 cursor-not-allowed",
-                )}
-              >
-                {/* Hidden real radio input */}
-                <input
-                  type="radio"
-                  id={inputId}
-                  name={groupName}
-                  value={opt.status}
-                  checked={isActive}
-                  onChange={() => onMark(opt.status)}
+          {/* Status badge + toggle row */}
+          <div className="flex items-center gap-2">
+            {/* Status badge */}
+            <span
+              className={cn(
+                "flex-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold",
+                badgeBg,
+                badgeText,
+              )}
+            >
+              <span aria-hidden="true">{badgeIcon}</span>
+              {badgeLabel}
+            </span>
+
+            {/* Toggle dropdown button — uses muted/neutral theme colors, NOT primary */}
+            <button
+              type="button"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              data-ocid="marking.toggle"
+              className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-xs font-medium hover:bg-accent transition-colors duration-150"
+              aria-expanded={isExpanded}
+              aria-label={
+                isExpanded
+                  ? "Collapse attendance options"
+                  : "Expand attendance options"
+              }
+            >
+              {isExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
+
+          {/* Collapsible attendance options */}
+          {isExpanded && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.18 }}
+              className="overflow-hidden"
+            >
+              <div className="pt-2.5">
+                <fieldset
                   disabled={isMutating}
-                  className="sr-only"
-                />
-
-                {/* Visual radio circle */}
-                <span
-                  className={cn(
-                    "shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all duration-150",
-                    isActive
-                      ? "border-current bg-white/25"
-                      : "border-muted-foreground/40 bg-transparent",
-                  )}
-                  aria-hidden="true"
+                  className="border-0 p-0 m-0 flex flex-col gap-1.5"
                 >
-                  {isActive && (
-                    <span className="w-2 h-2 rounded-full bg-current" />
-                  )}
-                </span>
+                  <legend className="sr-only">
+                    Attendance status for {worker.name}
+                  </legend>
+                  {STATUS_OPTIONS.map((opt) => {
+                    const isActive = todayStatus === opt.status;
+                    const inputId = `${groupName}-${opt.status}`;
+                    return (
+                      <label
+                        key={opt.status}
+                        htmlFor={inputId}
+                        data-ocid={`marking.${opt.status}.button`}
+                        className={cn(
+                          "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer select-none",
+                          isActive
+                            ? cn(
+                                opt.activeBg,
+                                opt.activeText,
+                                opt.activeBorder,
+                                "shadow-sm",
+                              )
+                            : "bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                          isMutating && "opacity-60 cursor-not-allowed",
+                        )}
+                      >
+                        {/* Hidden real radio input */}
+                        <input
+                          type="radio"
+                          id={inputId}
+                          name={groupName}
+                          value={opt.status}
+                          checked={isActive}
+                          onChange={() => onMark(opt.status)}
+                          disabled={isMutating}
+                          className="sr-only"
+                        />
 
-                {/* Status icon */}
-                <span className="text-[11px] leading-none" aria-hidden="true">
-                  {opt.icon}
-                </span>
+                        {/* Visual radio circle */}
+                        <span
+                          className={cn(
+                            "shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all duration-150",
+                            isActive
+                              ? "border-current bg-white/25"
+                              : "border-muted-foreground/40 bg-transparent",
+                          )}
+                          aria-hidden="true"
+                        >
+                          {isActive && (
+                            <span className="w-2 h-2 rounded-full bg-current" />
+                          )}
+                        </span>
 
-                {/* Status label */}
-                <span className="flex-1">{opt.label}</span>
-              </label>
-            );
-          })}
-        </fieldset>
-      </CardContent>
-    </Card>
+                        {/* Status icon */}
+                        <span
+                          className="text-[11px] leading-none"
+                          aria-hidden="true"
+                        >
+                          {opt.icon}
+                        </span>
+
+                        {/* Status label */}
+                        <span className="flex-1">{opt.label}</span>
+                      </label>
+                    );
+                  })}
+                </fieldset>
+              </div>
+            </motion.div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent data-ocid="marking.dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Worker</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{worker.name}</strong>?
+              This will remove the worker and all their attendance records.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-ocid="marking.cancel_button">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-ocid="marking.confirm_button"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setShowDeleteDialog(false);
+                onDelete();
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -166,6 +305,7 @@ export default function MarkingPage() {
   const { data: records = [], isLoading: recordsLoading } =
     useAllAttendanceRecords();
   const markAttendance = useMarkAttendance();
+  const deleteWorker = useDeleteWorker();
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -210,6 +350,17 @@ export default function MarkingPage() {
         },
       },
     );
+  };
+
+  const handleDelete = (worker: Worker) => {
+    deleteWorker.mutate(worker.id, {
+      onSuccess: () => {
+        toast.success(`${worker.name} has been deleted.`);
+      },
+      onError: () => {
+        toast.error(`Failed to delete ${worker.name}.`);
+      },
+    });
   };
 
   const todayStr = new Date().toLocaleDateString("en-US", {
@@ -285,7 +436,7 @@ export default function MarkingPage() {
           data-ocid="marking.loading_state"
         >
           {["mk1", "mk2", "mk3", "mk4", "mk5", "mk6"].map((key) => (
-            <Skeleton key={key} className="h-52 rounded-xl" />
+            <Skeleton key={key} className="h-36 rounded-xl" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -312,6 +463,7 @@ export default function MarkingPage() {
                 todayStatus={todayMap.get(worker.id.toString()) ?? null}
                 onMark={(status) => handleMark(worker, status)}
                 isMutating={markAttendance.isPending}
+                onDelete={() => handleDelete(worker)}
               />
             </motion.div>
           ))}
