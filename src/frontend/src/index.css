@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/assets/fonts/PlusJakartaSans.woff2") format("woff2");
+  font-weight: 300 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Sans";
+  src: url("/assets/fonts/DMSans.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    /* Light mode tokens — based on design spec */
+    --radius: 0.75rem;
+
+    /* Background: #F3F4F6 → oklch(0.961 0.006 264) */
+    --background: 0.961 0.006 264;
+    /* Cards: #FFFFFF */
+    --card: 1 0 0;
+    --card-foreground: 0.145 0.005 264;
+    /* Foreground / primary text: #111827 → oklch(0.188 0.01 268) */
+    --foreground: 0.188 0.01 268;
+    --popover: 1 0 0;
+    --popover-foreground: 0.188 0.01 268;
+    /* Primary accent: #2563EB → oklch(0.552 0.219 264) */
+    --primary: 0.552 0.219 264;
+    --primary-foreground: 1 0 0;
+    /* Secondary text: #6B7280 → oklch(0.549 0.018 264) */
+    --secondary: 0.97 0.004 264;
+    --secondary-foreground: 0.549 0.018 264;
+    --muted: 0.97 0.004 264;
+    --muted-foreground: 0.549 0.018 264;
+    --accent: 0.938 0.012 264;
+    --accent-foreground: 0.188 0.01 268;
+    /* Destructive / Absent: #EF4444 → oklch(0.627 0.198 27) */
+    --destructive: 0.627 0.198 27;
+    --destructive-foreground: 1 0 0;
+    /* Border: #E5E7EB → oklch(0.922 0.006 264) */
+    --border: 0.922 0.006 264;
+    --input: 0.922 0.006 264;
+    --ring: 0.552 0.219 264;
+
+    /* Attendance status tokens */
+    /* Present: #22C55E → oklch(0.723 0.2 145) */
+    --status-present: 0.723 0.2 145;
+    --status-present-fg: 1 0 0;
+    /* Absent: #EF4444 → oklch(0.627 0.198 27) */
+    --status-absent: 0.627 0.198 27;
+    --status-absent-fg: 1 0 0;
+    /* On Leave: #F59E0B → oklch(0.764 0.18 80) */
+    --status-leave: 0.764 0.18 80;
+    --status-leave-fg: 1 0 0;
+    /* Half Day: #3B82F6 → oklch(0.601 0.2 260) */
+    --status-halfday: 0.601 0.2 260;
+    --status-halfday-fg: 1 0 0;
+    /* Unmarked: #D1D5DB → oklch(0.876 0.007 264) */
+    --status-unmarked: 0.876 0.007 264;
+    --status-unmarked-fg: 0.549 0.018 264;
+
+    /* Sidebar tokens - always dark slate */
+    --sidebar: 0.246 0.012 264;
+    --sidebar-foreground: 0.96 0.005 264;
+    --sidebar-primary: 0.552 0.219 264;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.188 0.01 268;
+    --sidebar-accent-foreground: 0.96 0.005 264;
+    --sidebar-border: 0.32 0.012 264;
+    --sidebar-ring: 0.552 0.219 264;
+
+    --chart-1: 0.723 0.2 145;
+    --chart-2: 0.627 0.198 27;
+    --chart-3: 0.764 0.18 80;
+    --chart-4: 0.601 0.2 260;
+    --chart-5: 0.552 0.219 264;
+  }
+
+  .dark {
+    /* Dark mode: deep slate backgrounds */
+    --background: 0.145 0.01 268;
+    --card: 0.188 0.01 268;
+    --card-foreground: 0.96 0.005 264;
+    --foreground: 0.96 0.005 264;
+    --popover: 0.22 0.01 268;
+    --popover-foreground: 0.96 0.005 264;
+    --primary: 0.601 0.2 260;
+    --primary-foreground: 1 0 0;
+    --secondary: 0.246 0.012 264;
+    --secondary-foreground: 0.876 0.007 264;
+    --muted: 0.246 0.012 264;
+    --muted-foreground: 0.65 0.01 264;
+    --accent: 0.246 0.012 264;
+    --accent-foreground: 0.96 0.005 264;
+    --destructive: 0.627 0.198 27;
+    --destructive-foreground: 1 0 0;
+    --border: 0.32 0.012 264;
+    --input: 0.32 0.012 264;
+    --ring: 0.601 0.2 260;
+
+    /* Status colors remain the same in dark mode */
+    --status-present: 0.723 0.2 145;
+    --status-present-fg: 1 0 0;
+    --status-absent: 0.627 0.198 27;
+    --status-absent-fg: 1 0 0;
+    --status-leave: 0.764 0.18 80;
+    --status-leave-fg: 1 0 0;
+    --status-halfday: 0.601 0.2 260;
+    --status-halfday-fg: 1 0 0;
+    --status-unmarked: 0.32 0.012 264;
+    --status-unmarked-fg: 0.65 0.01 264;
+
+    --sidebar: 0.145 0.01 268;
+    --sidebar-foreground: 0.96 0.005 264;
+    --sidebar-primary: 0.601 0.2 260;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.188 0.01 268;
+    --sidebar-accent-foreground: 0.96 0.005 264;
+    --sidebar-border: 0.246 0.012 264;
+    --sidebar-ring: 0.601 0.2 260;
+
+    --chart-1: 0.723 0.2 145;
+    --chart-2: 0.627 0.198 27;
+    --chart-3: 0.764 0.18 80;
+    --chart-4: 0.601 0.2 260;
+    --chart-5: 0.552 0.219 264;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: "Plus Jakarta Sans", "DM Sans", system-ui, sans-serif;
+  }
+}
