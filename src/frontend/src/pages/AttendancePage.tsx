@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CalendarDays, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   type AttendanceRecord,
   AttendanceStatus,
@@ -12,7 +13,11 @@ import {
 } from "../backend";
 import WorkerDetailsModal from "../components/WorkerDetailsModal";
 import { useIsMobile } from "../hooks/use-mobile";
-import { useAllAttendanceRecords, useWorkers } from "../hooks/useQueries";
+import {
+  useAllAttendanceRecords,
+  useDeleteWorker,
+  useWorkers,
+} from "../hooks/useQueries";
 
 function getWeekDates(referenceDate: Date): Date[] {
   const d = new Date(referenceDate);
@@ -106,6 +111,7 @@ export default function AttendancePage() {
   const { data: workers = [], isLoading: workersLoading } = useWorkers();
   const { data: records = [], isLoading: recordsLoading } =
     useAllAttendanceRecords();
+  const deleteWorker = useDeleteWorker();
 
   const isLoading = workersLoading || recordsLoading;
 
@@ -142,40 +148,40 @@ export default function AttendancePage() {
     return { present, absent, leave, halfday };
   }, [dates, workers, attendanceMap]);
 
-  // Daily attendance report data
-  const todayReport = useMemo(() => {
-    const todayStr = new Date().toISOString().split("T")[0];
-    const todayRecords = records.filter((r) => r.date === todayStr);
-    const present = todayRecords.filter(
-      (r) => r.status === AttendanceStatus.present,
-    ).length;
-    const absent = todayRecords.filter(
-      (r) => r.status === AttendanceStatus.absent,
-    ).length;
-    const onLeave = todayRecords.filter(
-      (r) => r.status === AttendanceStatus.onLeave,
-    ).length;
-    const halfDay = todayRecords.filter(
-      (r) => r.status === AttendanceStatus.halfDay,
-    ).length;
+  // Period attendance report — analyzes all dates in the current period view
+  const periodReport = useMemo(() => {
+    let present = 0;
+    let absent = 0;
+    let onLeave = 0;
+    let halfDay = 0;
+
+    for (const d of dates) {
+      const dateStr = toISO(d);
+      for (const w of workers) {
+        const status = attendanceMap.get(`${w.id}-${dateStr}`);
+        if (status === AttendanceStatus.present) present++;
+        else if (status === AttendanceStatus.absent) absent++;
+        else if (status === AttendanceStatus.onLeave) onLeave++;
+        else if (status === AttendanceStatus.halfDay) halfDay++;
+      }
+    }
+
+    const totalSlots = workers.length * dates.length;
+    const marked = present + absent + onLeave + halfDay;
+    const unmarked = totalSlots - marked;
     const totalWorkers = workers.length;
-    // Count unique workers marked today
-    const markedWorkerIds = new Set(
-      todayRecords.map((r) => r.workerId.toString()),
-    );
-    const totalMarked = markedWorkerIds.size;
-    const unmarked = totalWorkers - totalMarked;
+
     return {
       present,
       absent,
       onLeave,
       halfDay,
       unmarked,
+      totalSlots,
+      marked,
       totalWorkers,
-      totalMarked,
-      todayStr,
     };
-  }, [records, workers]);
+  }, [dates, workers, attendanceMap]);
 
   const handlePrev = () => {
     const d = new Date(referenceDate);
@@ -212,13 +218,6 @@ export default function AttendancePage() {
           return `${start.getDate()} ${MONTH_NAMES[start.getMonth()].slice(0, 3)} – ${end.getDate()} ${MONTH_NAMES[end.getMonth()].slice(0, 3)} ${end.getFullYear()}`;
         })()
       : `${MONTH_NAMES[referenceDate.getMonth()]} ${referenceDate.getFullYear()}`;
-
-  const todayDisplayStr = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -417,7 +416,7 @@ export default function AttendancePage() {
         </CardContent>
       </Card>
 
-      {/* Today's Attendance Report */}
+      {/* Period Attendance Summary */}
       {!isLoading && workers.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -429,61 +428,69 @@ export default function AttendancePage() {
             <CardHeader className="pb-2">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                 <h2 className="text-base font-bold text-foreground">
-                  Today's Attendance Report
+                  Period Attendance Summary
                 </h2>
                 <span className="text-xs text-muted-foreground">
-                  {todayDisplayStr}
+                  {periodLabel}
                 </span>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Proportional bar */}
-              {todayReport.totalWorkers > 0 && (
+              {periodReport.totalSlots > 0 && (
                 <div
                   className="w-full h-6 rounded-full overflow-hidden flex"
                   role="img"
-                  aria-label="Today's attendance distribution"
+                  aria-label="Period attendance distribution"
                 >
-                  {todayReport.present > 0 && (
+                  {periodReport.present > 0 && (
                     <div
                       className="bg-status-present h-full transition-all"
                       style={{
-                        width: `${(todayReport.present / todayReport.totalWorkers) * 100}%`,
+                        width: `${
+                          (periodReport.present / periodReport.totalSlots) * 100
+                        }%`,
                       }}
-                      title={`Present: ${todayReport.present}`}
+                      title={`Present: ${periodReport.present}`}
                     />
                   )}
-                  {todayReport.absent > 0 && (
+                  {periodReport.absent > 0 && (
                     <div
                       className="bg-status-absent h-full transition-all"
                       style={{
-                        width: `${(todayReport.absent / todayReport.totalWorkers) * 100}%`,
+                        width: `${
+                          (periodReport.absent / periodReport.totalSlots) * 100
+                        }%`,
                       }}
-                      title={`Absent: ${todayReport.absent}`}
+                      title={`Absent: ${periodReport.absent}`}
                     />
                   )}
-                  {todayReport.onLeave > 0 && (
+                  {periodReport.onLeave > 0 && (
                     <div
                       className="bg-status-leave h-full transition-all"
                       style={{
-                        width: `${(todayReport.onLeave / todayReport.totalWorkers) * 100}%`,
+                        width: `${
+                          (periodReport.onLeave / periodReport.totalSlots) * 100
+                        }%`,
                       }}
-                      title={`On Leave: ${todayReport.onLeave}`}
+                      title={`On Leave: ${periodReport.onLeave}`}
                     />
                   )}
-                  {todayReport.halfDay > 0 && (
+                  {periodReport.halfDay > 0 && (
                     <div
                       className="bg-status-halfday h-full transition-all"
                       style={{
-                        width: `${(todayReport.halfDay / todayReport.totalWorkers) * 100}%`,
+                        width: `${
+                          (periodReport.halfDay / periodReport.totalSlots) * 100
+                        }%`,
                       }}
-                      title={`Half Day: ${todayReport.halfDay}`}
+                      title={`Half Day: ${periodReport.halfDay}`}
                     />
                   )}
-                  {todayReport.unmarked > 0 && (
+                  {periodReport.unmarked > 0 && (
                     <div
                       className="bg-status-unmarked h-full transition-all flex-1"
-                      title={`Unmarked: ${todayReport.unmarked}`}
+                      title={`Unmarked: ${periodReport.unmarked}`}
                     />
                   )}
                 </div>
@@ -493,7 +500,7 @@ export default function AttendancePage() {
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 <div className="flex flex-col items-center p-3 rounded-lg bg-status-present/10 border border-status-present/20">
                   <span className="text-2xl font-bold text-status-present">
-                    {todayReport.present}
+                    {periodReport.present}
                   </span>
                   <span className="text-[11px] text-muted-foreground mt-0.5 font-medium">
                     Present
@@ -501,7 +508,7 @@ export default function AttendancePage() {
                 </div>
                 <div className="flex flex-col items-center p-3 rounded-lg bg-status-absent/10 border border-status-absent/20">
                   <span className="text-2xl font-bold text-status-absent">
-                    {todayReport.absent}
+                    {periodReport.absent}
                   </span>
                   <span className="text-[11px] text-muted-foreground mt-0.5 font-medium">
                     Absent
@@ -509,7 +516,7 @@ export default function AttendancePage() {
                 </div>
                 <div className="flex flex-col items-center p-3 rounded-lg bg-status-leave/10 border border-status-leave/20">
                   <span className="text-2xl font-bold text-status-leave">
-                    {todayReport.onLeave}
+                    {periodReport.onLeave}
                   </span>
                   <span className="text-[11px] text-muted-foreground mt-0.5 font-medium">
                     On Leave
@@ -517,7 +524,7 @@ export default function AttendancePage() {
                 </div>
                 <div className="flex flex-col items-center p-3 rounded-lg bg-status-halfday/10 border border-status-halfday/20">
                   <span className="text-2xl font-bold text-status-halfday">
-                    {todayReport.halfDay}
+                    {periodReport.halfDay}
                   </span>
                   <span className="text-[11px] text-muted-foreground mt-0.5 font-medium">
                     Half Day
@@ -525,7 +532,7 @@ export default function AttendancePage() {
                 </div>
                 <div className="flex flex-col items-center p-3 rounded-lg bg-muted/50 border border-border col-span-2 sm:col-span-1">
                   <span className="text-2xl font-bold text-muted-foreground">
-                    {todayReport.unmarked}
+                    {periodReport.unmarked}
                   </span>
                   <span className="text-[11px] text-muted-foreground mt-0.5 font-medium">
                     Unmarked
@@ -536,24 +543,29 @@ export default function AttendancePage() {
               {/* Summary footer */}
               <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-muted-foreground border-t border-border">
                 <span>
-                  Total workers:{" "}
+                  Workers:{" "}
                   <strong className="text-foreground">
-                    {todayReport.totalWorkers}
+                    {periodReport.totalWorkers}
                   </strong>
                 </span>
                 <span>
-                  Marked today:{" "}
+                  Total slots:{" "}
                   <strong className="text-foreground">
-                    {todayReport.totalMarked}
+                    {periodReport.totalSlots}
+                  </strong>
+                </span>
+                <span>
+                  Marked:{" "}
+                  <strong className="text-foreground">
+                    {periodReport.marked}
                   </strong>
                 </span>
                 <span>
                   Coverage:{" "}
                   <strong className="text-foreground">
-                    {todayReport.totalWorkers > 0
+                    {periodReport.totalSlots > 0
                       ? Math.round(
-                          (todayReport.totalMarked / todayReport.totalWorkers) *
-                            100,
+                          (periodReport.marked / periodReport.totalSlots) * 100,
                         )
                       : 0}
                     %
@@ -573,6 +585,17 @@ export default function AttendancePage() {
             (r) => r.workerId === selectedWorker.id,
           )}
           onClose={() => setSelectedWorker(null)}
+          onDelete={() => {
+            deleteWorker.mutate(selectedWorker.id, {
+              onSuccess: () => {
+                toast.success(`${selectedWorker.name} has been deleted.`);
+                setSelectedWorker(null);
+              },
+              onError: () => {
+                toast.error(`Failed to delete ${selectedWorker.name}.`);
+              },
+            });
+          }}
         />
       )}
     </div>

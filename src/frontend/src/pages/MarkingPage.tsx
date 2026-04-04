@@ -96,14 +96,17 @@ function WorkerCard({
   onMark,
   isMutating,
   onDelete,
+  isExpanded,
+  onToggleExpand,
 }: {
   worker: Worker;
   todayStatus: AttendanceStatus | null;
   onMark: (status: AttendanceStatus) => void;
   isMutating: boolean;
   onDelete: () => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }) {
-  const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const groupName = `attendance-${worker.id.toString()}`;
@@ -165,7 +168,7 @@ function WorkerCard({
             {/* Toggle dropdown button — uses muted/neutral theme colors, NOT primary */}
             <button
               type="button"
-              onClick={() => setIsExpanded((prev) => !prev)}
+              onClick={onToggleExpand}
               data-ocid="marking.toggle"
               className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-xs font-medium hover:bg-accent transition-colors duration-150"
               aria-expanded={isExpanded}
@@ -301,6 +304,7 @@ function WorkerCard({
 
 export default function MarkingPage() {
   const [search, setSearch] = useState("");
+  const [expandedWorkerId, setExpandedWorkerId] = useState<string | null>(null);
   const { data: workers = [], isLoading: workersLoading } = useWorkers();
   const { data: records = [], isLoading: recordsLoading } =
     useAllAttendanceRecords();
@@ -464,6 +468,12 @@ export default function MarkingPage() {
                 onMark={(status) => handleMark(worker, status)}
                 isMutating={markAttendance.isPending}
                 onDelete={() => handleDelete(worker)}
+                isExpanded={expandedWorkerId === worker.id.toString()}
+                onToggleExpand={() =>
+                  setExpandedWorkerId((prev) =>
+                    prev === worker.id.toString() ? null : worker.id.toString(),
+                  )
+                }
               />
             </motion.div>
           ))}
