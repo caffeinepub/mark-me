@@ -14,35 +14,45 @@ import {
 import { cn } from "../lib/utils";
 import { WorkerAvatar } from "./DashboardPage";
 
-const STATUS_BUTTONS: {
+const STATUS_OPTIONS: {
   status: AttendanceStatus;
   label: string;
-  cls: string;
-  activeCls: string;
+  icon: string;
+  activeBg: string;
+  activeText: string;
+  activeBorder: string;
 }[] = [
   {
     status: AttendanceStatus.present,
     label: "Present",
-    cls: "border-status-present/40 text-status-present hover:bg-status-present hover:text-status-present-fg",
-    activeCls: "bg-status-present text-status-present-fg border-status-present",
+    icon: "✓",
+    activeBg: "bg-status-present",
+    activeText: "text-status-present-fg",
+    activeBorder: "border-status-present",
   },
   {
     status: AttendanceStatus.absent,
     label: "Absent",
-    cls: "border-status-absent/40 text-status-absent hover:bg-status-absent hover:text-status-absent-fg",
-    activeCls: "bg-status-absent text-status-absent-fg border-status-absent",
+    icon: "✗",
+    activeBg: "bg-status-absent",
+    activeText: "text-status-absent-fg",
+    activeBorder: "border-status-absent",
   },
   {
     status: AttendanceStatus.onLeave,
     label: "On Leave",
-    cls: "border-status-leave/40 text-status-leave hover:bg-status-leave hover:text-status-leave-fg",
-    activeCls: "bg-status-leave text-status-leave-fg border-status-leave",
+    icon: "○",
+    activeBg: "bg-status-leave",
+    activeText: "text-status-leave-fg",
+    activeBorder: "border-status-leave",
   },
   {
     status: AttendanceStatus.halfDay,
     label: "Half Day",
-    cls: "border-status-halfday/40 text-status-halfday hover:bg-status-halfday hover:text-status-halfday-fg",
-    activeCls: "bg-status-halfday text-status-halfday-fg border-status-halfday",
+    icon: "◑",
+    activeBg: "bg-status-halfday",
+    activeText: "text-status-halfday-fg",
+    activeBorder: "border-status-halfday",
   },
 ];
 
@@ -57,37 +67,94 @@ function WorkerCard({
   onMark: (status: AttendanceStatus) => void;
   isMutating: boolean;
 }) {
+  const groupName = `attendance-${worker.id.toString()}`;
+
   return (
     <Card className="shadow-card border-border">
       <CardContent className="p-4">
-        <div className="flex flex-col items-center gap-2 mb-4">
-          <WorkerAvatar name={worker.name} photo={worker.photo} size="md" />
-          <div className="text-center">
-            <p className="text-sm font-semibold text-foreground truncate max-w-[140px]">
+        {/* Worker info row */}
+        <div className="flex items-center gap-3 mb-3">
+          <WorkerAvatar name={worker.name} photo={worker.photo} size="sm" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground truncate">
               {worker.name}
             </p>
-            <p className="text-xs text-muted-foreground truncate max-w-[140px]">
+            <p className="text-xs text-muted-foreground truncate">
               {worker.role}
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          {STATUS_BUTTONS.map((btn) => (
-            <button
-              type="button"
-              key={btn.status}
-              onClick={() => onMark(btn.status)}
-              disabled={isMutating}
-              data-ocid={`marking.${btn.status}.button`}
-              className={cn(
-                "px-2 py-1.5 rounded-md text-xs font-semibold border transition-all duration-150",
-                todayStatus === btn.status ? btn.activeCls : btn.cls,
-              )}
-            >
-              {btn.label}
-            </button>
-          ))}
-        </div>
+
+        {/* Divider */}
+        <div className="h-px bg-border mb-2.5" />
+
+        {/* Radio-style single-select status list */}
+        <fieldset
+          disabled={isMutating}
+          className="border-0 p-0 m-0 flex flex-col gap-1.5"
+        >
+          <legend className="sr-only">
+            Attendance status for {worker.name}
+          </legend>
+          {STATUS_OPTIONS.map((opt) => {
+            const isActive = todayStatus === opt.status;
+            const inputId = `${groupName}-${opt.status}`;
+            return (
+              <label
+                key={opt.status}
+                htmlFor={inputId}
+                data-ocid={`marking.${opt.status}.button`}
+                className={cn(
+                  "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all duration-150 cursor-pointer select-none",
+                  isActive
+                    ? cn(
+                        opt.activeBg,
+                        opt.activeText,
+                        opt.activeBorder,
+                        "shadow-sm",
+                      )
+                    : "bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                  isMutating && "opacity-60 cursor-not-allowed",
+                )}
+              >
+                {/* Hidden real radio input */}
+                <input
+                  type="radio"
+                  id={inputId}
+                  name={groupName}
+                  value={opt.status}
+                  checked={isActive}
+                  onChange={() => onMark(opt.status)}
+                  disabled={isMutating}
+                  className="sr-only"
+                />
+
+                {/* Visual radio circle */}
+                <span
+                  className={cn(
+                    "shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all duration-150",
+                    isActive
+                      ? "border-current bg-white/25"
+                      : "border-muted-foreground/40 bg-transparent",
+                  )}
+                  aria-hidden="true"
+                >
+                  {isActive && (
+                    <span className="w-2 h-2 rounded-full bg-current" />
+                  )}
+                </span>
+
+                {/* Status icon */}
+                <span className="text-[11px] leading-none" aria-hidden="true">
+                  {opt.icon}
+                </span>
+
+                {/* Status label */}
+                <span className="flex-1">{opt.label}</span>
+              </label>
+            );
+          })}
+        </fieldset>
       </CardContent>
     </Card>
   );
@@ -125,7 +192,7 @@ export default function MarkingPage() {
 
   const handleMark = (worker: Worker, status: AttendanceStatus) => {
     const currentStatus = todayMap.get(worker.id.toString());
-    if (currentStatus === status) return; // already marked with same status, do nothing
+    if (currentStatus === status) return;
     markAttendance.mutate(
       { workerId: worker.id, status, date: today },
       {
@@ -218,7 +285,7 @@ export default function MarkingPage() {
           data-ocid="marking.loading_state"
         >
           {["mk1", "mk2", "mk3", "mk4", "mk5", "mk6"].map((key) => (
-            <Skeleton key={key} className="h-44 rounded-xl" />
+            <Skeleton key={key} className="h-52 rounded-xl" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
