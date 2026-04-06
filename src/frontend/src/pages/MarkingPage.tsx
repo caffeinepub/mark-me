@@ -22,6 +22,7 @@ import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AttendanceStatus, type Worker } from "../backend";
+import WorkerDetailsModal from "../components/WorkerDetailsModal";
 import {
   useAllAttendanceRecords,
   useDeleteWorker,
@@ -31,6 +32,7 @@ import {
 import { cn } from "../lib/utils";
 import { WorkerAvatar } from "./DashboardPage";
 
+// Only Present and Absent
 const STATUS_OPTIONS: {
   status: AttendanceStatus;
   label: string;
@@ -61,26 +63,6 @@ const STATUS_OPTIONS: {
     badgeBg: "bg-status-absent",
     badgeText: "text-status-absent-fg",
   },
-  {
-    status: AttendanceStatus.onLeave,
-    label: "On Leave",
-    icon: "○",
-    activeBg: "bg-status-leave",
-    activeText: "text-status-leave-fg",
-    activeBorder: "border-status-leave",
-    badgeBg: "bg-status-leave",
-    badgeText: "text-status-leave-fg",
-  },
-  {
-    status: AttendanceStatus.halfDay,
-    label: "Half Day",
-    icon: "◑",
-    activeBg: "bg-status-halfday",
-    activeText: "text-status-halfday-fg",
-    activeBorder: "border-status-halfday",
-    badgeBg: "bg-status-halfday",
-    badgeText: "text-status-halfday-fg",
-  },
 ];
 
 const NOT_MARKED_BADGE = {
@@ -90,12 +72,38 @@ const NOT_MARKED_BADGE = {
   badgeText: "text-status-unmarked-fg",
 };
 
+function buildLatestStatusMap(
+  records: {
+    workerId: bigint;
+    date: string;
+    status: AttendanceStatus;
+    timestamp: bigint;
+  }[],
+  date: string,
+): Map<string, AttendanceStatus> {
+  const latestTimestamp = new Map<string, bigint>();
+  const latestStatus = new Map<string, AttendanceStatus>();
+
+  for (const r of records) {
+    if (r.date !== date) continue;
+    const key = r.workerId.toString();
+    const prev = latestTimestamp.get(key);
+    if (prev === undefined || r.timestamp > prev) {
+      latestTimestamp.set(key, r.timestamp);
+      latestStatus.set(key, r.status);
+    }
+  }
+
+  return latestStatus;
+}
+
 function WorkerCard({
   worker,
   todayStatus,
   onMark,
   isMutating,
   onDelete,
+  onViewProfile,
   isExpanded,
   onToggleExpand,
 }: {
@@ -104,6 +112,7 @@ function WorkerCard({
   onMark: (status: AttendanceStatus) => void;
   isMutating: boolean;
   onDelete: () => void;
+  onViewProfile: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }) {
@@ -127,11 +136,24 @@ function WorkerCard({
         <CardContent className="p-4">
           {/* Worker info row */}
           <div className="flex items-center gap-3 mb-3">
-            <WorkerAvatar name={worker.name} photo={worker.photo} size="sm" />
+            <button
+              type="button"
+              onClick={onViewProfile}
+              data-ocid="marking.worker_profile.button"
+              className="shrink-0 focus:outline-none focus:ring-2 focus:ring-primary rounded-full"
+              aria-label={`View profile for ${worker.name}`}
+            >
+              <WorkerAvatar name={worker.name} photo={worker.photo} size="sm" />
+            </button>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-foreground truncate">
+              <button
+                type="button"
+                onClick={onViewProfile}
+                data-ocid="marking.worker_name.button"
+                className="text-sm font-semibold text-primary hover:underline text-left block truncate w-full"
+              >
                 {worker.name}
-              </p>
+              </button>
               <p className="text-xs text-muted-foreground truncate">
                 {worker.role}
               </p>
@@ -165,7 +187,7 @@ function WorkerCard({
               {badgeLabel}
             </span>
 
-            {/* Toggle dropdown button — uses muted/neutral theme colors, NOT primary */}
+            {/* Toggle dropdown button */}
             <button
               type="button"
               onClick={onToggleExpand}
@@ -186,7 +208,7 @@ function WorkerCard({
             </button>
           </div>
 
-          {/* Collapsible attendance options */}
+          {/* Collapsible attendance options — only Present and Absent */}
           {isExpanded && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
@@ -224,7 +246,6 @@ function WorkerCard({
                           isMutating && "opacity-60 cursor-not-allowed",
                         )}
                       >
-                        {/* Hidden real radio input */}
                         <input
                           type="radio"
                           id={inputId}
@@ -235,8 +256,6 @@ function WorkerCard({
                           disabled={isMutating}
                           className="sr-only"
                         />
-
-                        {/* Visual radio circle */}
                         <span
                           className={cn(
                             "shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all duration-150",
@@ -250,16 +269,12 @@ function WorkerCard({
                             <span className="w-2 h-2 rounded-full bg-current" />
                           )}
                         </span>
-
-                        {/* Status icon */}
                         <span
                           className="text-[11px] leading-none"
                           aria-hidden="true"
                         >
                           {opt.icon}
                         </span>
-
-                        {/* Status label */}
                         <span className="flex-1">{opt.label}</span>
                       </label>
                     );
@@ -305,6 +320,7 @@ function WorkerCard({
 export default function MarkingPage() {
   const [search, setSearch] = useState("");
   const [expandedWorkerId, setExpandedWorkerId] = useState<string | null>(null);
+  const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null);
   const { data: workers = [], isLoading: workersLoading } = useWorkers();
   const { data: records = [], isLoading: recordsLoading } =
     useAllAttendanceRecords();
@@ -313,26 +329,41 @@ export default function MarkingPage() {
 
   const today = new Date().toISOString().split("T")[0];
 
-  const todayMap = useMemo(() => {
-    const map = new Map<string, AttendanceStatus>();
-    for (const r of records) {
-      if (r.date === today) {
-        map.set(r.workerId.toString(), r.status);
-      }
-    }
-    return map;
-  }, [records, today]);
+  // Only show workers whose joining date is today or in the past
+  const eligibleWorkers = useMemo(() => {
+    return workers.filter((w) => w.joiningDate <= today);
+  }, [workers, today]);
+
+  const todayMap = useMemo(
+    () => buildLatestStatusMap(records, today),
+    [records, today],
+  );
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return workers;
+    if (!search.trim()) return eligibleWorkers;
     const q = search.toLowerCase();
-    return workers.filter(
+    return eligibleWorkers.filter(
       (w) =>
         w.name.toLowerCase().includes(q) || w.role.toLowerCase().includes(q),
     );
-  }, [workers, search]);
+  }, [eligibleWorkers, search]);
 
   const isLoading = workersLoading || recordsLoading;
+
+  // Counts — only Present and Absent
+  const presentCount = useMemo(
+    () =>
+      [...todayMap.values()].filter((s) => s === AttendanceStatus.present)
+        .length,
+    [todayMap],
+  );
+  const absentCount = useMemo(
+    () =>
+      [...todayMap.values()].filter((s) => s === AttendanceStatus.absent)
+        .length,
+    [todayMap],
+  );
+  const unmarkedCount = Math.max(0, eligibleWorkers.length - todayMap.size);
 
   const handleMark = (worker: Worker, status: AttendanceStatus) => {
     const currentStatus = todayMap.get(worker.id.toString());
@@ -395,44 +426,61 @@ export default function MarkingPage() {
         </div>
       </div>
 
-      {/* Quick stats */}
-      <div className="flex gap-3 flex-wrap text-xs">
-        <span className="px-2.5 py-1 rounded-full bg-status-present/15 text-status-present font-semibold">
-          ✓{" "}
-          {
-            [...todayMap.values()].filter((s) => s === AttendanceStatus.present)
-              .length
-          }{" "}
-          Present
-        </span>
-        <span className="px-2.5 py-1 rounded-full bg-status-absent/15 text-status-absent font-semibold">
-          ✗{" "}
-          {
-            [...todayMap.values()].filter((s) => s === AttendanceStatus.absent)
-              .length
-          }{" "}
-          Absent
-        </span>
-        <span className="px-2.5 py-1 rounded-full bg-status-leave/15 text-status-leave font-semibold">
-          ○{" "}
-          {
-            [...todayMap.values()].filter((s) => s === AttendanceStatus.onLeave)
-              .length
-          }{" "}
-          On Leave
-        </span>
-        <span className="px-2.5 py-1 rounded-full bg-status-halfday/15 text-status-halfday font-semibold">
-          ◑{" "}
-          {
-            [...todayMap.values()].filter((s) => s === AttendanceStatus.halfDay)
-              .length
-          }{" "}
-          Half Day
-        </span>
-        <span className="px-2.5 py-1 rounded-full bg-status-unmarked/80 text-status-unmarked-fg font-semibold">
-          — {workers.length - todayMap.size} Unmarked
-        </span>
-      </div>
+      {/* Attendance Summary Card — Present, Absent, Unmarked only */}
+      {!isLoading && eligibleWorkers.length > 0 && (
+        <Card
+          className="shadow-card border-border"
+          data-ocid="marking.summary.card"
+        >
+          <CardContent className="pt-4 pb-3">
+            <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">
+              Today's Attendance Count
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <AttendanceSummaryCell
+                label="Present"
+                count={presentCount}
+                total={eligibleWorkers.length}
+                bg="bg-status-present/15"
+                border="border-status-present/30"
+                textColor="text-status-present"
+              />
+              <AttendanceSummaryCell
+                label="Absent"
+                count={absentCount}
+                total={eligibleWorkers.length}
+                bg="bg-status-absent/15"
+                border="border-status-absent/30"
+                textColor="text-status-absent"
+              />
+              <AttendanceSummaryCell
+                label="Unmarked"
+                count={unmarkedCount}
+                total={eligibleWorkers.length}
+                bg="bg-muted/60"
+                border="border-border"
+                textColor="text-muted-foreground"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-3 pt-2.5 border-t border-border">
+              Out of{" "}
+              <span className="font-semibold text-foreground">
+                {eligibleWorkers.length} workers
+              </span>
+              {" — "}
+              <span className="font-semibold text-status-present">
+                {presentCount} Present
+              </span>
+              {" · "}
+              <span className="font-semibold text-status-absent">
+                {absentCount} Absent
+              </span>
+              {" · "}
+              <span className="font-semibold">{unmarkedCount} Unmarked</span>
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {isLoading ? (
         <div
@@ -468,6 +516,7 @@ export default function MarkingPage() {
                 onMark={(status) => handleMark(worker, status)}
                 isMutating={markAttendance.isPending}
                 onDelete={() => handleDelete(worker)}
+                onViewProfile={() => setSelectedWorker(worker)}
                 isExpanded={expandedWorkerId === worker.id.toString()}
                 onToggleExpand={() =>
                   setExpandedWorkerId((prev) =>
@@ -479,6 +528,59 @@ export default function MarkingPage() {
           ))}
         </div>
       )}
+
+      {/* Worker Details Modal */}
+      {selectedWorker && (
+        <WorkerDetailsModal
+          worker={selectedWorker}
+          records={records.filter((r) => r.workerId === selectedWorker.id)}
+          onClose={() => setSelectedWorker(null)}
+          onDelete={() => {
+            deleteWorker.mutate(selectedWorker.id, {
+              onSuccess: () => {
+                toast.success(`${selectedWorker.name} has been deleted.`);
+                setSelectedWorker(null);
+              },
+              onError: () => {
+                toast.error(`Failed to delete ${selectedWorker.name}.`);
+              },
+            });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AttendanceSummaryCell({
+  label,
+  count,
+  total,
+  bg,
+  border,
+  textColor,
+}: {
+  label: string;
+  count: number;
+  total: number;
+  bg: string;
+  border: string;
+  textColor: string;
+}) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <div
+      className={`flex flex-col items-center p-2.5 rounded-lg border ${bg} ${border}`}
+    >
+      <span className={`text-xl font-bold leading-none ${textColor}`}>
+        {count}
+      </span>
+      <span className="text-[10px] text-muted-foreground mt-1 text-center leading-tight">
+        {label}
+      </span>
+      <span className={`text-[10px] font-semibold mt-0.5 ${textColor}`}>
+        {pct}%
+      </span>
     </div>
   );
 }

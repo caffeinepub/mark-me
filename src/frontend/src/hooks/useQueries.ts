@@ -115,6 +115,38 @@ export function useCreateWorker() {
   });
 }
 
+export function useUpdateWorker() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      role,
+      joiningDate,
+      photo,
+    }: {
+      id: bigint;
+      role: string;
+      joiningDate: string;
+      photo?: string | null;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      const updated = await actor.updateWorkerRoleWithDate(
+        id,
+        role,
+        joiningDate,
+      );
+      if (photo !== undefined) {
+        return actor.updateWorkerPhoto(id, photo);
+      }
+      return updated;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workers"] });
+    },
+  });
+}
+
 export function useDeleteWorker() {
   const { actor } = useActor();
   const queryClient = useQueryClient();

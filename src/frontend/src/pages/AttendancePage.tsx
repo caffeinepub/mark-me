@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CalendarDays, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   type AttendanceRecord,
@@ -62,6 +62,29 @@ const MONTH_NAMES = [
 
 type CellStatus = AttendanceStatus | null;
 
+function buildAttendanceMap(
+  records: {
+    workerId: bigint;
+    date: string;
+    status: AttendanceStatus;
+    timestamp: bigint;
+  }[],
+): Map<string, AttendanceStatus> {
+  const latestTimestamp = new Map<string, bigint>();
+  const result = new Map<string, AttendanceStatus>();
+
+  for (const r of records) {
+    const key = `${r.workerId}-${r.date}`;
+    const prev = latestTimestamp.get(key);
+    if (prev === undefined || r.timestamp > prev) {
+      latestTimestamp.set(key, r.timestamp);
+      result.set(key, r.status);
+    }
+  }
+
+  return result;
+}
+
 function StatusCell({ status }: { status: CellStatus }) {
   if (!status) {
     return (
@@ -72,30 +95,33 @@ function StatusCell({ status }: { status: CellStatus }) {
       </div>
     );
   }
-  const map: Record<AttendanceStatus, { abbr: string; cls: string }> = {
-    [AttendanceStatus.present]: {
-      abbr: "P",
-      cls: "bg-status-present text-status-present-fg",
-    },
-    [AttendanceStatus.absent]: {
-      abbr: "A",
-      cls: "bg-status-absent text-status-absent-fg",
-    },
-    [AttendanceStatus.onLeave]: {
-      abbr: "L",
-      cls: "bg-status-leave text-status-leave-fg",
-    },
-    [AttendanceStatus.halfDay]: {
-      abbr: "HD",
-      cls: "bg-status-halfday text-status-halfday-fg",
-    },
-  };
-  const { abbr, cls } = map[status];
+  // Only show Present and Absent with distinct colors; other statuses show as unmarked
+  const map: Partial<Record<AttendanceStatus, { abbr: string; cls: string }>> =
+    {
+      [AttendanceStatus.present]: {
+        abbr: "P",
+        cls: "bg-status-present text-status-present-fg",
+      },
+      [AttendanceStatus.absent]: {
+        abbr: "A",
+        cls: "bg-status-absent text-status-absent-fg",
+      },
+    };
+  const entry = map[status];
+  if (!entry) {
+    return (
+      <div className="w-8 h-8 rounded-md bg-status-unmarked flex items-center justify-center mx-auto">
+        <span className="text-[10px] font-semibold text-status-unmarked-fg">
+          —
+        </span>
+      </div>
+    );
+  }
   return (
     <div
-      className={`w-8 h-8 rounded-md ${cls} flex items-center justify-center mx-auto`}
+      className={`w-8 h-8 rounded-md ${entry.cls} flex items-center justify-center mx-auto`}
     >
-      <span className="text-[10px] font-bold">{abbr}</span>
+      <span className="text-[10px] font-bold">{entry.abbr}</span>
     </div>
   );
 }
@@ -109,12 +135,53 @@ export default function AttendancePage() {
   const [searchDate, setSearchDate] = useState("");
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null);
 
+  const [istTime, setIstTime] = useState(() => {
+    return new Date().toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  });
+
+  useEffect(() => {
+    const tick = () => {
+      setIstTime(
+        new Date().toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          weekday: "short",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+        }),
+      );
+    };
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const { data: workers = [], isLoading: workersLoading } = useWorkers();
   const { data: records = [], isLoading: recordsLoading } =
     useAllAttendanceRecords();
   const deleteWorker = useDeleteWorker();
 
   const isLoading = workersLoading || recordsLoading;
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // Only show workers whose joining date is today or in the past
+  const eligibleWorkers = useMemo(() => {
+    return workers.filter((w) => w.joiningDate <= today);
+  }, [workers, today]);
 
   const dates = useMemo(() => {
     if (viewMode === "week") {
@@ -123,70 +190,57 @@ export default function AttendancePage() {
     return getMonthDates(referenceDate.getFullYear(), referenceDate.getMonth());
   }, [referenceDate, viewMode]);
 
-  const attendanceMap = useMemo(() => {
-    const map = new Map<string, AttendanceStatus>();
-    for (const r of records) {
-      map.set(`${r.workerId}-${r.date}`, r.status);
-    }
-    return map;
-  }, [records]);
+  const attendanceMap = useMemo(() => buildAttendanceMap(records), [records]);
 
   const summary = useMemo(() => {
     let present = 0;
     let absent = 0;
-    let leave = 0;
-    let halfday = 0;
     for (const d of dates) {
       const dateStr = toISO(d);
-      for (const w of workers) {
+      for (const w of eligibleWorkers) {
         const status = attendanceMap.get(`${w.id}-${dateStr}`);
         if (status === AttendanceStatus.present) present++;
         else if (status === AttendanceStatus.absent) absent++;
-        else if (status === AttendanceStatus.onLeave) leave++;
-        else if (status === AttendanceStatus.halfDay) halfday++;
       }
     }
-    return { present, absent, leave, halfday };
-  }, [dates, workers, attendanceMap]);
+    return { present, absent };
+  }, [dates, eligibleWorkers, attendanceMap]);
 
-  // Period attendance report — analyzes all dates in the current period view
   const periodReport = useMemo(() => {
     let present = 0;
     let absent = 0;
-    let onLeave = 0;
-    let halfDay = 0;
 
     for (const d of dates) {
       const dateStr = toISO(d);
-      for (const w of workers) {
+      for (const w of eligibleWorkers) {
         const status = attendanceMap.get(`${w.id}-${dateStr}`);
         if (status === AttendanceStatus.present) present++;
         else if (status === AttendanceStatus.absent) absent++;
-        else if (status === AttendanceStatus.onLeave) onLeave++;
-        else if (status === AttendanceStatus.halfDay) halfDay++;
       }
     }
 
-    const totalSlots = workers.length * dates.length;
-    const marked = present + absent + onLeave + halfDay;
-    const totalWorkers = workers.length;
+    const totalSlots = eligibleWorkers.length * dates.length;
+    const marked = present + absent;
+    const totalWorkers = eligibleWorkers.length;
 
-    // Unmarked = workers with no attendance record for TODAY specifically
     const todayStr = new Date().toISOString().split("T")[0];
-    const todayUnmarked =
-      workers.length - records.filter((r) => r.date === todayStr).length;
+    const markedTodayCount = eligibleWorkers.filter((w) =>
+      attendanceMap.has(`${w.id}-${todayStr}`),
+    ).length;
+    const todayUnmarked = Math.max(
+      0,
+      eligibleWorkers.length - markedTodayCount,
+    );
 
     return {
       present,
       absent,
-      onLeave,
-      halfDay,
       unmarked: todayUnmarked,
       totalSlots,
       marked,
       totalWorkers,
     };
-  }, [dates, workers, attendanceMap, records]);
+  }, [dates, eligibleWorkers, attendanceMap]);
 
   const handlePrev = () => {
     const d = new Date(referenceDate);
@@ -236,6 +290,9 @@ export default function AttendancePage() {
             {viewMode === "week"
               ? "Weekly view — navigate with the arrows"
               : "Monthly view — full month at a glance"}
+          </p>
+          <p className="text-xs text-muted-foreground/60 mt-0.5">
+            {istTime} IST
           </p>
         </div>
         <div className="relative">
@@ -297,13 +354,11 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          {/* Legend */}
+          {/* Legend — only P and A */}
           <div className="flex items-center gap-2 flex-wrap">
             {[
               { label: "P", cls: "bg-status-present text-status-present-fg" },
               { label: "A", cls: "bg-status-absent text-status-absent-fg" },
-              { label: "L", cls: "bg-status-leave text-status-leave-fg" },
-              { label: "HD", cls: "bg-status-halfday text-status-halfday-fg" },
               { label: "–", cls: "bg-status-unmarked text-status-unmarked-fg" },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-1">
@@ -315,7 +370,7 @@ export default function AttendancePage() {
               </div>
             ))}
             <span className="text-[10px] text-muted-foreground">
-              P=Present A=Absent L=Leave HD=Half Day
+              P=Present A=Absent
             </span>
           </div>
         </CardHeader>
@@ -327,14 +382,16 @@ export default function AttendancePage() {
                 <Skeleton key={key} className="h-10 w-full" />
               ))}
             </div>
-          ) : workers.length === 0 ? (
+          ) : eligibleWorkers.length === 0 ? (
             <div
               className="p-12 text-center"
               data-ocid="attendance.empty_state"
             >
               <CalendarDays className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
               <p className="text-sm text-muted-foreground">
-                No workers found. Add workers to see the attendance grid.
+                {workers.length === 0
+                  ? "No workers found. Add workers to see the attendance grid."
+                  : "No workers have joined yet. Workers appear here on their joining date."}
               </p>
             </div>
           ) : (
@@ -361,7 +418,7 @@ export default function AttendancePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {workers.map((worker, idx) => (
+                  {eligibleWorkers.map((worker, idx) => (
                     <tr
                       key={worker.id.toString()}
                       className="border-b border-border/50 hover:bg-accent/30 transition-colors"
@@ -406,8 +463,8 @@ export default function AttendancePage() {
             </div>
           )}
 
-          {/* Summary strip */}
-          {!isLoading && workers.length > 0 && (
+          {/* Summary strip — Present and Absent only */}
+          {!isLoading && eligibleWorkers.length > 0 && (
             <div className="flex items-center gap-4 px-4 py-3 border-t border-border bg-muted/40 flex-wrap">
               <span className="text-xs font-semibold text-muted-foreground">
                 Period Summary:
@@ -418,19 +475,13 @@ export default function AttendancePage() {
               <span className="text-xs font-semibold text-status-absent">
                 ● Absent: {summary.absent}
               </span>
-              <span className="text-xs font-semibold text-status-leave">
-                ● Leave: {summary.leave}
-              </span>
-              <span className="text-xs font-semibold text-status-halfday">
-                ● Half Day: {summary.halfday}
-              </span>
             </div>
           )}
         </CardContent>
       </Card>
 
       {/* Period Attendance Summary */}
-      {!isLoading && workers.length > 0 && (
+      {!isLoading && eligibleWorkers.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -449,7 +500,7 @@ export default function AttendancePage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Proportional bar */}
+              {/* Proportional bar — Present and Absent only */}
               {periodReport.totalSlots > 0 && (
                 <div
                   className="w-full h-6 rounded-full overflow-hidden flex"
@@ -478,28 +529,6 @@ export default function AttendancePage() {
                       title={`Absent: ${periodReport.absent}`}
                     />
                   )}
-                  {periodReport.onLeave > 0 && (
-                    <div
-                      className="bg-status-leave h-full transition-all"
-                      style={{
-                        width: `${
-                          (periodReport.onLeave / periodReport.totalSlots) * 100
-                        }%`,
-                      }}
-                      title={`On Leave: ${periodReport.onLeave}`}
-                    />
-                  )}
-                  {periodReport.halfDay > 0 && (
-                    <div
-                      className="bg-status-halfday h-full transition-all"
-                      style={{
-                        width: `${
-                          (periodReport.halfDay / periodReport.totalSlots) * 100
-                        }%`,
-                      }}
-                      title={`Half Day: ${periodReport.halfDay}`}
-                    />
-                  )}
                   {periodReport.unmarked > 0 && (
                     <div
                       className="bg-status-unmarked h-full transition-all flex-1"
@@ -509,8 +538,8 @@ export default function AttendancePage() {
                 </div>
               )}
 
-              {/* Stats grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {/* Stats grid — Present, Absent, Unmarked Today */}
+              <div className="grid grid-cols-3 gap-2">
                 <div className="flex flex-col items-center p-3 rounded-lg bg-status-present/10 border border-status-present/20">
                   <span className="text-2xl font-bold text-status-present">
                     {periodReport.present}
@@ -527,23 +556,7 @@ export default function AttendancePage() {
                     Absent
                   </span>
                 </div>
-                <div className="flex flex-col items-center p-3 rounded-lg bg-status-leave/10 border border-status-leave/20">
-                  <span className="text-2xl font-bold text-status-leave">
-                    {periodReport.onLeave}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground mt-0.5 font-medium">
-                    On Leave
-                  </span>
-                </div>
-                <div className="flex flex-col items-center p-3 rounded-lg bg-status-halfday/10 border border-status-halfday/20">
-                  <span className="text-2xl font-bold text-status-halfday">
-                    {periodReport.halfDay}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground mt-0.5 font-medium">
-                    Half Day
-                  </span>
-                </div>
-                <div className="flex flex-col items-center p-3 rounded-lg bg-muted/50 border border-border col-span-2 sm:col-span-1">
+                <div className="flex flex-col items-center p-3 rounded-lg bg-muted/50 border border-border">
                   <span className="text-2xl font-bold text-muted-foreground">
                     {periodReport.unmarked}
                   </span>
@@ -590,7 +603,7 @@ export default function AttendancePage() {
         </motion.div>
       )}
 
-      {/* Worker Details Modal */}
+      {/* Worker Details Modal — always opens on click */}
       {selectedWorker && (
         <WorkerDetailsModal
           worker={selectedWorker}
