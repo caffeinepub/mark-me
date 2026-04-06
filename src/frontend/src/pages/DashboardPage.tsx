@@ -64,6 +64,11 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   const today = new Date().toISOString().split("T")[0];
 
+  const eligibleWorkers = useMemo(
+    () => workers.filter((w) => w.joiningDate <= today),
+    [workers, today],
+  );
+
   const todayStatusMap = useMemo(
     () => buildLatestStatusMap(records, today),
     [records, today],
@@ -71,17 +76,24 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
   const todayPresent = useMemo(
     () =>
-      [...todayStatusMap.values()].filter((s) => s === AttendanceStatus.present)
-        .length,
-    [todayStatusMap],
+      eligibleWorkers.filter(
+        (w) => todayStatusMap.get(w.id.toString()) === AttendanceStatus.present,
+      ).length,
+    [eligibleWorkers, todayStatusMap],
   );
+
   const todayAbsent = useMemo(
     () =>
-      [...todayStatusMap.values()].filter((s) => s === AttendanceStatus.absent)
-        .length,
-    [todayStatusMap],
+      eligibleWorkers.filter(
+        (w) => todayStatusMap.get(w.id.toString()) === AttendanceStatus.absent,
+      ).length,
+    [eligibleWorkers, todayStatusMap],
   );
-  const unmarked = Math.max(0, workers.length - todayStatusMap.size);
+
+  const markedEligibleCount = eligibleWorkers.filter((w) =>
+    todayStatusMap.has(w.id.toString()),
+  ).length;
+  const unmarked = Math.max(0, eligibleWorkers.length - markedEligibleCount);
 
   const isLoading = workersLoading || recordsLoading;
 
@@ -131,12 +143,14 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     if (selectedFilter === null) return [];
     if (selectedFilter === "total") return workers;
     if (selectedFilter === "unmarked") {
-      return workers.filter((w) => !todayStatusMap.has(w.id.toString()));
+      return eligibleWorkers.filter(
+        (w) => !todayStatusMap.has(w.id.toString()),
+      );
     }
-    return workers.filter(
+    return eligibleWorkers.filter(
       (w) => todayStatusMap.get(w.id.toString()) === selectedFilter,
     );
-  }, [selectedFilter, workers, todayStatusMap]);
+  }, [selectedFilter, workers, eligibleWorkers, todayStatusMap]);
 
   const filterLabel = (() => {
     if (selectedFilter === null) return "";

@@ -16,8 +16,10 @@ import { useIsMobile } from "../hooks/use-mobile";
 import {
   useAllAttendanceRecords,
   useDeleteWorker,
+  useMarkAttendance,
   useWorkers,
 } from "../hooks/useQueries";
+import { cn } from "../lib/utils";
 import { WorkerAvatar } from "./DashboardPage";
 
 function getWeekDates(referenceDate: Date): Date[] {
@@ -173,6 +175,7 @@ export default function AttendancePage() {
   const { data: records = [], isLoading: recordsLoading } =
     useAllAttendanceRecords();
   const deleteWorker = useDeleteWorker();
+  const markAttendance = useMarkAttendance();
 
   const isLoading = workersLoading || recordsLoading;
 
@@ -443,6 +446,73 @@ export default function AttendancePage() {
                             <p className="text-[11px] text-muted-foreground truncate max-w-[90px]">
                               {worker.role}
                             </p>
+                            {/* Inline attendance quick-mark buttons — only for today */}
+                            <div className="flex items-center gap-1 mt-1">
+                              {[
+                                {
+                                  status: AttendanceStatus.present,
+                                  label: "P",
+                                  activeBg: "bg-status-present",
+                                  activeText: "text-status-present-fg",
+                                },
+                                {
+                                  status: AttendanceStatus.absent,
+                                  label: "A",
+                                  activeBg: "bg-status-absent",
+                                  activeText: "text-status-absent-fg",
+                                },
+                              ].map((opt) => {
+                                const todayAttendanceStatus =
+                                  attendanceMap.get(`${worker.id}-${today}`) ??
+                                  null;
+                                const isActive =
+                                  todayAttendanceStatus === opt.status;
+                                return (
+                                  <button
+                                    key={opt.status}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isActive) return;
+                                      markAttendance.mutate(
+                                        {
+                                          workerId: worker.id,
+                                          status: opt.status,
+                                          date: today,
+                                        },
+                                        {
+                                          onSuccess: () =>
+                                            toast.success(
+                                              `${worker.name} marked ${
+                                                opt.label === "P"
+                                                  ? "Present"
+                                                  : "Absent"
+                                              }`,
+                                            ),
+                                          onError: () =>
+                                            toast.error(
+                                              "Failed to mark attendance",
+                                            ),
+                                        },
+                                      );
+                                    }}
+                                    disabled={markAttendance.isPending}
+                                    className={cn(
+                                      "text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors duration-150",
+                                      isActive
+                                        ? cn(opt.activeBg, opt.activeText)
+                                        : "bg-muted text-muted-foreground hover:bg-muted/80",
+                                    )}
+                                    title={
+                                      opt.label === "P"
+                                        ? "Mark Present"
+                                        : "Mark Absent"
+                                    }
+                                  >
+                                    {opt.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
                       </td>
